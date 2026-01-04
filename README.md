@@ -118,7 +118,6 @@ AI/ML basics, satellite data, geospatial projects, React, and beginner-friendly 
 </a>  
 </div>  
   
-
 <br/>  
 
 
@@ -126,6 +125,7 @@ AI/ML basics, satellite data, geospatial projects, React, and beginner-friendly 
 <div align="center"><img src="https://github-readme-stats.vercel.app/api?username=Rishi-0019&show_icons=true&count_private=true&hide_border=true" align="center" /></div>  
 
 <br/>  
+
 
 
 ## Recent Blog Posts  
