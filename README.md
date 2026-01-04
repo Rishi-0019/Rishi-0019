@@ -15,7 +15,7 @@
 -Full-Stack Web Development (React, APIs, Databases)  
   
 
-- ❓ Ask me about:-
+- ❓ Ask me about:-<br>
 AI/ML basics, satellite data, geospatial projects, React, and beginner-friendly tech learning paths  
   
 
