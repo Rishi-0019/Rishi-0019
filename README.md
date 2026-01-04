@@ -10,9 +10,9 @@
   
 
 - 🌱 Currently learning: <br>
--Machine Learning & Deep Learning
--Geospatial Technologies
--Full-Stack Web Development (React, APIs, Databases)  
+-Machine Learning & Deep Learning <br>
+-Geospatial Technologies <br>
+-Full-Stack Web Development (React, APIs, Databases)   <br>
   
 
 - ❓ Ask me about:-<br>
