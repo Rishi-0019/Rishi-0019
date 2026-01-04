@@ -3,13 +3,13 @@
 </div>  
   
 
-### <div align="center">A second-year engineering student with a strong interest in AI/ML, geospatial technologies.🚀</div>  
+### <div align="center" font-size="12">A second-year engineering student with a strong interest in AI/ML, geospatial technologies.🚀</div>  
   
 
 - Projects related to satellite tracking, geospatial visualization, and AI-powered applications  
   
 
-- 🌱 Currently learning:
+- 🌱 Currently learning: <br>
 -Machine Learning & Deep Learning
 -Geospatial Technologies
 -Full-Stack Web Development (React, APIs, Databases)  
