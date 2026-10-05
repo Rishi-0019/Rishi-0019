@@ -190,12 +190,12 @@ def calendar_start(today: dt.date) -> dt.date:
 
 def fetch_contributions(username: str, token: str):
     query = (
-        "query($u:String!){user(login:$u){contributionsCollection{contributionCalendar{"
+        "query{viewer{login contributionsCollection{contributionCalendar{"
         "totalContributions weeks{contributionDays{date contributionLevel}}}}}}"
     )
     req = urllib.request.Request(
         "https://api.github.com/graphql",
-        data=json.dumps({"query": query, "variables": {"u": username}}).encode(),
+        data=json.dumps({"query": query}).encode(),
         headers={"Authorization": f"bearer {token}", "Content-Type": "application/json", "User-Agent": UA},
     )
     with urllib.request.urlopen(req, timeout=20) as r:
@@ -203,9 +203,15 @@ def fetch_contributions(username: str, token: str):
     if data.get("errors"):
         messages = "; ".join(error.get("message", "Unknown GraphQL error") for error in data["errors"])
         raise RuntimeError(messages)
-    if not data.get("data") or not data["data"].get("user"):
-        raise RuntimeError(f"GitHub returned no contribution data for '{username}'.")
-    cal = data["data"]["user"]["contributionsCollection"]["contributionCalendar"]
+    viewer = data.get("data", {}).get("viewer")
+    if not viewer:
+        raise RuntimeError("GitHub returned no authenticated-user data. Check that your token is valid.")
+    if viewer["login"].casefold() != username.casefold():
+        raise RuntimeError(
+            f"Token belongs to '{viewer['login']}', but --username is '{username}'. "
+            "Use a token for the account whose contributions you want to show."
+        )
+    cal = viewer["contributionsCollection"]["contributionCalendar"]
     lv = {"NONE": 0, "FIRST_QUARTILE": 1, "SECOND_QUARTILE": 2, "THIRD_QUARTILE": 3, "FOURTH_QUARTILE": 4}
     levels = {}
     for week in cal["weeks"]:
