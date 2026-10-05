@@ -57,8 +57,18 @@ PROFILE = {
         "Open to work",
     ],
     "marquee": [
-        ["React.js", "TypeScript", "Node.js", "Express", "FastAPI", "PostgreSQL", "MongoDB"],
-        ["Redis", "Docker", "Prisma", "BullMQ", "Firebase", "WebSockets", "WebRTC", "Git"],
+        [
+            "JavaScript", "TypeScript", "Python", "Java", "C", "OOP", "React.js",
+            "Tailwind CSS", "Bootstrap", "HTML5", "CSS3", "Node.js", "Express.js",
+            "FastAPI", "RESTful APIs", "JWT Authentication", "WebSockets", "WebRTC",
+        ],
+        [
+            "PostgreSQL", "MySQL", "MongoDB", "Firebase Firestore", "Elasticsearch",
+            "Prisma", "Mongoose", "Redis", "BullMQ", "Docker", "Docker Compose",
+            "Job Queues", "Async Processing", "Pandas", "TensorFlow", "Satellite.js",
+            "Git", "GitHub", "Firebase", "Vercel", "Railway", "Communication",
+            "Team Collaboration", "Adaptability",
+        ],
     ],
     "about": [
         ("Name", "Rishabh Tiwari"),
@@ -68,11 +78,11 @@ PROFILE = {
         ("Status", "● Open to work"),
     ],
     "stack": [
-        ("Frontend", "React.js · TypeScript"),
-        ("Backend", "Node · Express · FastAPI"),
-        ("Data", "PostgreSQL · MongoDB · Redis"),
-        ("Infra", "Docker · Prisma · BullMQ · Firebase"),
-        ("Realtime", "WebSockets · WebRTC"),
+        ("Languages", "JS · TS · Python · Java · C"),
+        ("Frontend", "React.js · Tailwind · Bootstrap"),
+        ("Backend", "Node.js · Express · FastAPI · JWT"),
+        ("Data", "PostgreSQL · MySQL · MongoDB"),
+        ("Infra", "Redis · Docker · Firebase"),
     ],
     "highlights": [
         ("Hackathon", "HackerCup Grand Finalist"),
@@ -190,6 +200,11 @@ def fetch_contributions(username: str, token: str):
     )
     with urllib.request.urlopen(req, timeout=20) as r:
         data = json.load(r)
+    if data.get("errors"):
+        messages = "; ".join(error.get("message", "Unknown GraphQL error") for error in data["errors"])
+        raise RuntimeError(messages)
+    if not data.get("data") or not data["data"].get("user"):
+        raise RuntimeError(f"GitHub returned no contribution data for '{username}'.")
     cal = data["data"]["user"]["contributionsCollection"]["contributionCalendar"]
     lv = {"NONE": 0, "FIRST_QUARTILE": 1, "SECOND_QUARTILE": 2, "THIRD_QUARTILE": 3, "FOURTH_QUARTILE": 4}
     levels = {}
@@ -1006,7 +1021,7 @@ def main() -> None:
             levels, total = fetch_contributions(args.username, args.token)
             print(f"[ok] fetched real contributions ({total} total)")
         except Exception as e:  # noqa: BLE001
-            print(f"[warn] contribution fetch failed ({e}); using placeholder data")
+            sys.exit(f"GitHub contribution fetch failed: {e}")
     if levels is None:
         levels = synthetic_contributions(calendar_start(today), today, args.username)
         print("[info] placeholder contribution data (set GITHUB_TOKEN for your real graph)")
