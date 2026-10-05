@@ -4,7 +4,7 @@ generate_profile.py - animated, self-contained SVGs for a GitHub profile README.
 
 Creates (pure SMIL, no CSS/JS, no external assets):
   github-contribution-animation.svg   53x7 calendar, diagonal slant reveal + glint
-  terminal-card.svg                   ASCII avatar in a macOS terminal + `whoami`
+  terminal-card.svg                   high-detail coloured ASCII portrait in a terminal
   info-card.svg                       neofetch-style card, staggered slide-up lines
 and injects them into README.md between two marker comments.
 
@@ -36,7 +36,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 try:
-    from PIL import Image, ImageEnhance, ImageOps
+    from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 except ImportError:
     sys.exit("Pillow is required:  pip install pillow")
 
@@ -45,6 +45,7 @@ except ImportError:
 # --------------------------------------------------------------------------- #
 PROFILE = {
     "name": "Rishabh Tiwari",
+    "tagline": "Full Stack Developer",
     "about": [
         ("Name", "Rishabh Tiwari"),
         ("Role", "Full Stack Developer"),
@@ -79,20 +80,24 @@ UA = "profile-readme-generator/1.0"
 
 TB = 34  # title-bar height of every "window"
 
-# ASCII portrait geometry (a monospace glyph is ~0.6 x font-size wide)
-COLS, FS = 68, 9
-CW, LH = FS * 0.6, 9.6
+# ASCII portrait geometry (a monospace glyph is ~0.6 x font-size wide).
+# More columns + smaller font = noticeably sharper portrait in the same footprint.
+COLS, FS = 80, 7.6
+CW, LH = FS * 0.6, 8.2
 ROWS = round(COLS * CW / LH)
 AW, AH = COLS * CW, ROWS * LH
 TERM_W = int(AW + 2 * 32)
 AX = (TERM_W - AW) / 2
-AY = 10 + TB + 18
-FOOT_Y1 = AY + AH + 26
-FOOT_Y2 = FOOT_Y1 + 22
-CARD_H = int(FOOT_Y2 + 28)  # terminal + info card share this height
+CMD_Y = 10 + TB + 20            # "$ render ..." line above the portrait
+AY = CMD_Y + 16
+FOOT_Y1 = AY + AH + 30          # $ whoami
+FOOT_Y2 = FOOT_Y1 + 22          # name
+FOOT_Y3 = FOOT_Y2 + 17          # tagline
+CARD_H = int(FOOT_Y3 + 46)      # terminal + info card share this height
 INFO_W = round(TERM_W * 0.48 / 0.52)  # README table splits ~52/48
 
-RAMP = " .`'^\",:;Il!i><~+_-?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$"
+# Dense -> sparse ramp, ordered by visual weight (70 levels).
+RAMP = " .'`^\",:;Il!i><~+_-?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$"
 
 # Contribution levels 0-4 (4 = neon), and the colour each cell flashes from
 LEVEL_COLORS = ["#161b22", "#0e4429", "#006d32", "#26a641", "#39ff88"]
@@ -276,7 +281,7 @@ def make_contrib_svg(levels: dict, total: int | None, today: dt.date) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# 2) ASCII terminal card
+# 2) ASCII terminal card  (upgraded)
 # --------------------------------------------------------------------------- #
 def load_avatar(username: str, local: str | None) -> Image.Image:
     if local:
@@ -289,7 +294,15 @@ def load_avatar(username: str, local: str | None) -> Image.Image:
     return img
 
 
-def avatar_to_ascii(img: Image.Image, invert: bool = False) -> list[str]:
+def avatar_to_ascii(img: Image.Image, invert: bool = False) -> list[list[tuple[str, float]]]:
+    """Return ROWS x COLS cells of (char, brightness 0..1).
+
+    Quality tricks vs. a plain resize:
+      * work at 4x the target grid, then downsample -> smoother tonal steps
+      * unsharp mask -> crisp eyes / hairline / jaw edges
+      * local-ish contrast: autocontrast + contrast + gamma
+      * 70-level density ramp instead of 16
+    """
     if img.mode != "RGBA":
         img = img.convert("RGBA")
     bg = Image.new("RGBA", img.size, (13, 17, 23, 255))
@@ -299,16 +312,69 @@ def avatar_to_ascii(img: Image.Image, invert: bool = False) -> list[str]:
     s = min(w, h)
     left, top = (w - s) // 2, (h - s) // 2
     img = img.crop((left, top, left + s, top + s))
-    img = ImageOps.autocontrast(img, cutoff=2)
-    img = ImageEnhance.Contrast(img).enhance(1.35)
-    img = img.resize((COLS, ROWS), Image.LANCZOS)
+
+    # character cells are taller than wide, so sample a matching aspect
+    big = img.resize((COLS * 4, ROWS * 4), Image.LANCZOS)
+    big = ImageOps.autocontrast(big, cutoff=1.5)
+    big = big.filter(ImageFilter.UnsharpMask(radius=3, percent=190, threshold=2))
+    big = ImageEnhance.Contrast(big).enhance(1.25)
+    img = big.resize((COLS, ROWS), Image.BOX)
     if invert:
         img = ImageOps.invert(img)
+
     px, n = img.load(), len(RAMP) - 1
-    return [
-        "".join(RAMP[int((px[x, y] / 255) ** 0.9 * n)] for x in range(COLS))
-        for y in range(ROWS)
-    ]
+    rows = []
+    for y in range(ROWS):
+        row = []
+        for x in range(COLS):
+            v = (px[x, y] / 255) ** 1.15      # >1 darkens mids -> deeper shadows
+            row.append((RAMP[min(n, int(v * n + 0.5))], v))
+        rows.append(row)
+    return rows
+
+
+def _mix(a: str, b: str, t: float) -> str:
+    ca = [int(a[i:i + 2], 16) for i in (1, 3, 5)]
+    cb = [int(b[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(x + (y - x) * t):02x}" for x, y in zip(ca, cb))
+
+
+def row_hue(frac: float) -> str:
+    """Vertical hue sweep: cyan (top) -> green -> purple (bottom)."""
+    if frac < 0.55:
+        return _mix(CYAN, GREEN, frac / 0.55)
+    return _mix(GREEN, PURPLE, (frac - 0.55) / 0.45)
+
+
+SHADES = 6
+DIM = "#1b3a4b"
+
+
+def shade_color(hue: str, bucket: int) -> str:
+    t = bucket / (SHADES - 1)
+    if bucket == SHADES - 1:
+        return _mix(hue, "#ffffff", 0.55)        # highlights glow near-white
+    return _mix(DIM, hue, 0.22 + 0.78 * t)       # shadows sink into the background
+
+
+def row_markup(cells: list[tuple[str, float]], frac: float) -> str:
+    """One <tspan> per run of equal brightness bucket (keeps the SVG small)."""
+    hue = row_hue(frac)
+    runs, buf, cur = [], "", None
+    for ch, v in cells:
+        if ch == " ":
+            buf += ch
+            continue
+        b = min(SHADES - 1, int(v * SHADES))
+        if cur is None:
+            cur = b
+        elif b != cur:
+            runs.append((buf, cur))
+            buf, cur = "", b
+        buf += ch
+    if buf:
+        runs.append((buf, cur if cur is not None else 0))
+    return "".join(f'<tspan fill="{shade_color(hue, b)}">{escape(t)}</tspan>' for t, b in runs)
 
 
 def typed_text(x, y, segments, t0, step, font_size=13, cursor=False):
@@ -336,58 +402,128 @@ def typed_text(x, y, segments, t0, step, font_size=13, cursor=False):
     return svg, t
 
 
-def make_terminal_svg(lines: list[str], username: str, name: str) -> str:
-    t0, rd = 0.5, 0.075
+def hud_corners() -> str:
+    """Four viewfinder brackets around the portrait."""
+    pad, L = 8, 14
+    x0, y0, x1, y1 = AX - pad, AY - pad, AX + AW + pad, AY + AH + pad
+    d = (
+        f"M{x0} {y0 + L} V{y0} H{x0 + L} "
+        f"M{x1 - L} {y0} H{x1} V{y0 + L} "
+        f"M{x1} {y1 - L} V{y1} H{x1 - L} "
+        f"M{x0 + L} {y1} H{x0} V{y1 - L}"
+    )
+    return (
+        f'<path d="{d}" fill="none" stroke="{CYAN}" stroke-width="1.4" stroke-linecap="round" opacity="0">'
+        f'<animate attributeName="opacity" from="0" to=".75" begin="0.2s" dur="0.5s" fill="freeze"/></path>'
+    )
+
+
+def make_terminal_svg(cells: list[list[tuple[str, float]]], username: str, name: str, tagline: str) -> str:
+    t0, rd = 1.5, 0.06                      # portrait starts after the command is typed
     clips, texts, cursors = [], [], []
-    for i, line in enumerate(lines):
+    for i, row in enumerate(cells):
         ry, t = AY + i * LH, t0 + i * rd
+        frac = i / max(1, ROWS - 1)
         clips.append(
             f'<clipPath id="r{i}"><rect x="{AX:.2f}" y="{ry:.2f}" width="0" height="{LH}">'
             f'<animate attributeName="width" from="{CW}" to="{AW:.2f}" begin="{t:.3f}s" dur="{rd}s" fill="freeze"/>'
             f"</rect></clipPath>"
         )
         texts.append(
-            f'<text x="{AX:.2f}" y="{ry + FS - 0.8:.2f}" textLength="{AW:.2f}" lengthAdjust="spacing" '
-            f'clip-path="url(#r{i})">{escape(line)}</text>'
+            f'<text x="{AX:.2f}" y="{ry + FS - 0.6:.2f}" textLength="{AW:.2f}" lengthAdjust="spacing" '
+            f'clip-path="url(#r{i})">{row_markup(row, frac)}</text>'
         )
         cursors.append(
             f'<rect x="{AX:.2f}" y="{ry:.2f}" width="{CW}" height="{LH}" fill="#ffffff" opacity="0">'
-            f'<set attributeName="opacity" to="0.95" begin="{t:.3f}s"/>'
+            f'<set attributeName="opacity" to="0.9" begin="{t:.3f}s"/>'
             f'<animate attributeName="x" from="{AX:.2f}" to="{AX + AW - CW:.2f}" begin="{t:.3f}s" dur="{rd}s" fill="freeze"/>'
             f'<set attributeName="opacity" to="0" begin="{t + rd:.3f}s"/></rect>'
         )
     ascii_end = t0 + ROWS * rd
 
-    who, t1 = typed_text(
-        AX, FOOT_Y1, [("$ ", GREEN, True), ("whoami", WHITE, False)], ascii_end + 0.5, 0.09
+    # --- command line above the portrait ---------------------------------- #
+    cmd, _ = typed_text(
+        AX, CMD_Y,
+        [("$ ", GREEN, True), ("ascii-render ", WHITE, False), ("avatar.png", BLUE, False)],
+        0.35, 0.045, font_size=11,
     )
-    nm, _ = typed_text(
-        AX, FOOT_Y2, [(name, CYAN, True)], t1 + 0.45, 0.06, cursor=True
+    hud_label = (
+        f'<text x="{AX + AW:.1f}" y="{CMD_Y}" text-anchor="end" font-family="{FONT}" font-size="9.5" fill="{MUTED}" opacity="0">'
+        f'{COLS}×{ROWS} · {len(RAMP)} levels'
+        f'<animate attributeName="opacity" from="0" to="1" begin="1.3s" dur="0.4s" fill="freeze"/></text>'
     )
 
-    extra = f"""  <linearGradient id="asciiGrad" gradientUnits="userSpaceOnUse" x1="0" y1="{AY:.1f}" x2="0" y2="{AY + AH:.1f}">
-    <stop offset="0" stop-color="{CYAN}"/>
-    <stop offset=".55" stop-color="{GREEN}"/>
-    <stop offset="1" stop-color="{PURPLE}"/>
+    # --- footer prompt ----------------------------------------------------- #
+    who, t1 = typed_text(
+        AX, FOOT_Y1, [("$ ", GREEN, True), ("whoami", WHITE, False)], ascii_end + 0.4, 0.08, font_size=12
+    )
+    nm, t2 = typed_text(AX, FOOT_Y2, [(name, CYAN, True)], t1 + 0.35, 0.05, font_size=15)
+    tg, _ = typed_text(AX, FOOT_Y3, [(tagline, MUTED, False)], t2 + 0.2, 0.025, font_size=11, cursor=True)
+
+    # --- status bar -------------------------------------------------------- #
+    sb_y = FOOT_Y3 + 22
+    status = (
+        f'<line x1="{AX:.1f}" y1="{sb_y - 12:.1f}" x2="{AX + AW:.1f}" y2="{sb_y - 12:.1f}" stroke="#ffffff" stroke-opacity=".08"/>'
+        f'<g font-family="{FONT}" font-size="9.5" fill="{MUTED}">'
+        f'<circle cx="{AX + 4:.1f}" cy="{sb_y - 3:.1f}" r="3" fill="{GREEN}">'
+        f'<animate attributeName="opacity" values="1;.35;1" dur="2.4s" repeatCount="indefinite"/></circle>'
+        f'<text x="{AX + 14:.1f}" y="{sb_y:.1f}">zsh · utf-8</text>'
+        f'<text x="{AX + AW:.1f}" y="{sb_y:.1f}" text-anchor="end">main ✓ · {escape(username.lower())}</text>'
+        f"</g>"
+    )
+
+    # --- beams -------------------------------------------------------------- #
+    beam_h = 16
+    reveal_beam = (
+        f'<rect x="{AX - 4:.1f}" y="{AY - beam_h / 2:.1f}" width="{AW + 8:.1f}" height="{beam_h}" fill="url(#beam)" opacity="0">'
+        f'<set attributeName="opacity" to="1" begin="{t0:.2f}s"/>'
+        f'<animate attributeName="y" from="{AY - beam_h / 2:.1f}" to="{AY + AH - beam_h / 2:.1f}" '
+        f'begin="{t0:.2f}s" dur="{ROWS * rd:.2f}s" fill="freeze"/>'
+        f'<set attributeName="opacity" to="0" begin="{ascii_end:.2f}s"/></rect>'
+    )
+    idle_beam = (
+        f'<rect x="{AX - 4:.1f}" y="{AY - beam_h:.1f}" width="{AW + 8:.1f}" height="{beam_h}" fill="url(#beam)" opacity="0">'
+        f'<set attributeName="opacity" to=".7" begin="{ascii_end + 2:.2f}s"/>'
+        f'<animateTransform attributeName="transform" type="translate" values="0 0;0 {AH + beam_h:.1f};0 {AH + beam_h:.1f}" '
+        f'keyTimes="0;0.45;1" dur="9s" begin="{ascii_end + 2:.2f}s" repeatCount="indefinite"/></rect>'
+    )
+
+    extra = f"""  <linearGradient id="beam" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="{CYAN}" stop-opacity="0"/>
+    <stop offset=".5" stop-color="{CYAN}" stop-opacity=".30"/>
+    <stop offset="1" stop-color="{CYAN}" stop-opacity="0"/>
   </linearGradient>
   <radialGradient id="portraitGlow">
-    <stop offset="0" stop-color="{CYAN}" stop-opacity=".16"/>
+    <stop offset="0" stop-color="{CYAN}" stop-opacity=".14"/>
+    <stop offset=".6" stop-color="{PURPLE}" stop-opacity=".05"/>
     <stop offset="1" stop-color="{CYAN}" stop-opacity="0"/>
   </radialGradient>
+  <radialGradient id="vignette" cx=".5" cy=".5" r=".75">
+    <stop offset=".6" stop-color="#000000" stop-opacity="0"/>
+    <stop offset="1" stop-color="#000000" stop-opacity=".45"/>
+  </radialGradient>
+  <pattern id="scan" width="4" height="3" patternUnits="userSpaceOnUse">
+    <rect width="4" height="1" fill="#000000" fill-opacity=".22"/>
+  </pattern>
+  <clipPath id="bodyClip"><rect x="10" y="{10 + TB}" width="{TERM_W - 20}" height="{CARD_H - 20 - TB}" rx="0"/></clipPath>
   {"".join(clips)}
 """
     return (
         svg_open(TERM_W, CARD_H, f"ASCII portrait of {username}")
         + common_defs(extra)
         + frame(TERM_W, CARD_H, f"{username.lower()}@github: ~/portrait — zsh")
-        + f'<ellipse cx="{TERM_W/2}" cy="{AY + AH/2:.1f}" rx="{AW*0.62:.1f}" ry="{AH*0.58:.1f}" fill="url(#portraitGlow)"/>\n'
-        + f'<g font-family="{FONT}" font-size="{FS}" font-weight="600" fill="url(#asciiGrad)" xml:space="preserve">{"".join(texts)}</g>\n'
-        + "".join(cursors)
-        + f'\n<line x1="{AX:.1f}" y1="{AY + AH + 10:.1f}" x2="{AX + AW:.1f}" y2="{AY + AH + 10:.1f}" '
-        f'stroke="#ffffff" stroke-opacity=".18" stroke-dasharray="3 4"/>\n'
-        + who
+        + f'<ellipse cx="{TERM_W/2}" cy="{AY + AH/2:.1f}" rx="{AW*0.66:.1f}" ry="{AH*0.62:.1f}" fill="url(#portraitGlow)"/>\n'
+        + hud_corners()
         + "\n"
-        + nm
+        + cmd + "\n" + hud_label + "\n"
+        + f'<g font-family="{FONT}" font-size="{FS}" font-weight="600" xml:space="preserve">{"".join(texts)}</g>\n'
+        + "".join(cursors)
+        + "\n"
+        + f'<g clip-path="url(#bodyClip)">{reveal_beam}{idle_beam}</g>\n'
+        + f'<rect x="10" y="{10 + TB}" width="{TERM_W - 20}" height="{CARD_H - 20 - TB}" fill="url(#vignette)" pointer-events="none"/>\n'
+        + f'<rect x="10" y="{10 + TB}" width="{TERM_W - 20}" height="{CARD_H - 20 - TB}" fill="url(#scan)" opacity=".55" pointer-events="none"/>\n'
+        + who + "\n" + nm + "\n" + tg + "\n"
+        + status
         + "\n</svg>\n"
     )
 
@@ -527,11 +663,11 @@ def main() -> None:
 
     # 2) terminal card
     try:
-        ascii_lines = avatar_to_ascii(load_avatar(args.username, args.avatar), args.invert)
+        cells = avatar_to_ascii(load_avatar(args.username, args.avatar), args.invert)
     except Exception as e:  # noqa: BLE001
         sys.exit(f"Could not load avatar for '{args.username}': {e}\nTip: pass --avatar path/to/image.png")
     (out / "terminal-card.svg").write_text(
-        make_terminal_svg(ascii_lines, args.username, PROFILE["name"]), encoding="utf-8"
+        make_terminal_svg(cells, args.username, PROFILE["name"], PROFILE["tagline"]), encoding="utf-8"
     )
 
     # 3) info card
