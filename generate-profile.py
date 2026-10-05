@@ -80,14 +80,14 @@ UA = "profile-readme-generator/1.0"
 TB = 34  # title-bar height of every "window"
 
 # ASCII portrait geometry (a monospace glyph is ~0.6 x font-size wide)
-COLS, FS = 76, 8
-CW, LH = FS * 0.6, 8.4
+COLS, FS = 68, 9
+CW, LH = FS * 0.6, 9.6
 ROWS = round(COLS * CW / LH)
 AW, AH = COLS * CW, ROWS * LH
 TERM_W = int(AW + 2 * 32)
 AX = (TERM_W - AW) / 2
 AY = 10 + TB + 18
-FOOT_Y1 = AY + AH + 30
+FOOT_Y1 = AY + AH + 26
 FOOT_Y2 = FOOT_Y1 + 22
 CARD_H = int(FOOT_Y2 + 28)  # terminal + info card share this height
 INFO_W = round(TERM_W * 0.48 / 0.52)  # README table splits ~52/48
@@ -300,7 +300,7 @@ def avatar_to_ascii(img: Image.Image, invert: bool = False) -> list[str]:
     left, top = (w - s) // 2, (h - s) // 2
     img = img.crop((left, top, left + s, top + s))
     img = ImageOps.autocontrast(img, cutoff=2)
-    img = ImageEnhance.Contrast(img).enhance(1.2)
+    img = ImageEnhance.Contrast(img).enhance(1.35)
     img = img.resize((COLS, ROWS), Image.LANCZOS)
     if invert:
         img = ImageOps.invert(img)
@@ -381,7 +381,7 @@ def make_terminal_svg(lines: list[str], username: str, name: str) -> str:
         + common_defs(extra)
         + frame(TERM_W, CARD_H, f"{username.lower()}@github: ~/portrait — zsh")
         + f'<ellipse cx="{TERM_W/2}" cy="{AY + AH/2:.1f}" rx="{AW*0.62:.1f}" ry="{AH*0.58:.1f}" fill="url(#portraitGlow)"/>\n'
-        + f'<g font-family="{FONT}" font-size="{FS}" fill="url(#asciiGrad)" xml:space="preserve">{"".join(texts)}</g>\n'
+        + f'<g font-family="{FONT}" font-size="{FS}" font-weight="600" fill="url(#asciiGrad)" xml:space="preserve">{"".join(texts)}</g>\n'
         + "".join(cursors)
         + f'\n<line x1="{AX:.1f}" y1="{AY + AH + 10:.1f}" x2="{AX + AW:.1f}" y2="{AY + AH + 10:.1f}" '
         f'stroke="#ffffff" stroke-opacity=".18" stroke-dasharray="3 4"/>\n'
